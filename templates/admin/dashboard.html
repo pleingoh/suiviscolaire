@@ -1,0 +1,263 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div style="position:absolute;right:30px;top:20px">
+  <form action="/set-language/" method="post">
+    {% csrf_token %}
+    <input name="next" type="hidden" value="{{ request.path }}">
+    <button type="submit" name="language" value="fr" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;margin-right:5px">
+      Francais
+    </button>
+    <button type="submit" name="language" value="en" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd">
+      English
+    </button>
+  </form>
+</div>
+
+<style>
+body {
+  background: #f1f5f9;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.card,
+.chart-box,
+.table-container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.charts,
+.tables-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+}
+
+.table-container {
+  margin-top: 30px;
+}
+
+.table-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.dashboard-table thead {
+  background: #f3f4f6;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+  text-align: left;
+  padding: 12px;
+}
+
+.dashboard-table td {
+  border-top: 1px solid #e5e7eb;
+}
+
+.status-present {
+  color: green;
+  font-weight: bold;
+}
+
+.status-absent {
+  color: red;
+  font-weight: bold;
+}
+</style>
+
+<h1 style="margin-bottom:20px">Tableau de bord de l'ecole</h1>
+
+<div class="cards">
+  <div class="card">
+    <h3>Eleves</h3>
+    <h2>{{ students }}</h2>
+  </div>
+  <div class="card">
+    <h3>Classes</h3>
+    <h2>{{ classes }}</h2>
+  </div>
+  <div class="card">
+    <h3>Presences du jour</h3>
+    <h2>{{ attendance_today }}</h2>
+  </div>
+  <div class="card">
+    <h3>Passages cantine</h3>
+    <h2>{{ canteen_today }}</h2>
+  </div>
+  <div class="card">
+    <h3>Paiements du jour</h3>
+    <h2>{{ payments_today }}</h2>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<a href="/admin/dashboard/pdf/?students={{ students }}&classes={{ classes }}&attendance={{ attendance_today }}&canteen={{ canteen_today }}&payments={{ payments_today }}" style="background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none">
+  Exporter le rapport PDF
+</a>
+
+<div class="charts" style="margin-top:30px">
+  <div class="chart-box">
+    <h3>Eleves par classe</h3>
+    <canvas id="classChart"></canvas>
+    {{ context_classes|json_script:"classes-data" }}
+  </div>
+  <div class="chart-box">
+    <h3>Paiements par mois</h3>
+    <canvas id="paymentsChart"></canvas>
+    {{ context_payments|json_script:"payments-data" }}
+  </div>
+  <div class="chart-box">
+    <h3>Presences des eleves</h3>
+    <canvas id="attendanceChart"></canvas>
+    {{ context_attendance|json_script:"attendance-data" }}
+  </div>
+  <div class="chart-box">
+    <h3>Frequentation de la cantine</h3>
+    <canvas id="canteenChart"></canvas>
+    {{ context_canteen|json_script:"canteen-data" }}
+  </div>
+</div>
+
+<div class="tables-grid">
+  <div class="table-container">
+    <div class="table-title">Top 10 des meilleurs eleves</div>
+    <table class="dashboard-table">
+      <thead>
+        <tr>
+          <th>Eleve</th>
+          <th>Moyenne</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in context_top_students %}
+        <tr>
+          <td>{{ s.student__first_name }} {{ s.student__last_name }}</td>
+          <td>{{ s.avg|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-container">
+    <div class="table-title">Classement des classes</div>
+    <table class="dashboard-table">
+      <thead>
+        <tr>
+          <th>Classe</th>
+          <th>Moyenne</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in context_class_ranking %}
+        <tr>
+          <td>{{ c.student__enrollments__classroom__name }}</td>
+          <td>{{ c.avg|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="table-container">
+  <div class="table-title">Meilleurs eleves par classe</div>
+  <table class="dashboard-table">
+    <thead>
+      <tr>
+        <th>Classe</th>
+        <th>Eleve</th>
+        <th>Moyenne</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in context_top_students_class %}
+      <tr>
+        <td>{{ s.student__enrollments__classroom__name }}</td>
+        <td>{{ s.student__first_name }} {{ s.student__last_name }}</td>
+        <td>{{ s.avg|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+const classesData = JSON.parse(document.getElementById("classes-data").textContent);
+new Chart(document.getElementById("classChart"), {
+  type: "bar",
+  data: {
+    labels: classesData.map((item) => item.classroom__name),
+    datasets: [{
+      label: "Nombre d'eleves",
+      data: classesData.map((item) => item.total),
+      backgroundColor: "#3b82f6"
+    }]
+  }
+});
+
+const paymentsData = JSON.parse(document.getElementById("payments-data").textContent);
+new Chart(document.getElementById("paymentsChart"), {
+  type: "line",
+  data: {
+    labels: paymentsData.map((item) => item.month),
+    datasets: [{
+      label: "Paiements",
+      data: paymentsData.map((item) => item.total),
+      borderColor: "#16a34a",
+      backgroundColor: "#16a34a33",
+      fill: true
+    }]
+  }
+});
+
+const attendanceData = JSON.parse(document.getElementById("attendance-data").textContent);
+new Chart(document.getElementById("attendanceChart"), {
+  type: "line",
+  data: {
+    labels: attendanceData.map((item) => item.day),
+    datasets: [{
+      label: "Presences",
+      data: attendanceData.map((item) => item.total),
+      borderColor: "#f59e0b",
+      backgroundColor: "#f59e0b33",
+      fill: true
+    }]
+  }
+});
+
+const canteenData = JSON.parse(document.getElementById("canteen-data").textContent);
+new Chart(document.getElementById("canteenChart"), {
+  type: "bar",
+  data: {
+    labels: canteenData.map((item) => item.day),
+    datasets: [{
+      label: "Repas servis",
+      data: canteenData.map((item) => item.total),
+      backgroundColor: "#ef4444"
+    }]
+  }
+});
+</script>
+{% endblock %}
