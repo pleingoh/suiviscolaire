@@ -1,0 +1,57 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width:760px;margin:20px auto">
+  <h1 style="margin-bottom:8px">Modifier l'ecole</h1>
+  <p style="margin-top:0;color:#4b5563">{{ school.name }} ({{ school.code }})</p>
+
+  <form method="post" style="background:white;padding:24px;border-radius:12px;box-shadow:0 4px 16px rgba(15,23,42,.08)">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca">
+      {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    {% for field in form %}
+    <div style="margin-bottom:16px">
+      <label for="{{ field.id_for_label }}" style="display:block;font-weight:600;margin-bottom:6px">{{ field.label }}</label>
+      {{ field }}
+      {% if field.help_text %}
+      <div style="margin-top:4px;color:#6b7280;font-size:13px">{{ field.help_text }}</div>
+      {% endif %}
+      {% if field.errors %}
+      <div style="margin-top:4px;color:#b91c1c;font-size:13px">{{ field.errors }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div style="display:flex;gap:10px">
+      <button type="submit" style="background:#0f766e;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer">
+        Enregistrer
+      </button>
+      <a href="{% url 'admin-school-list' %}" style="padding:10px 16px;border-radius:6px;background:#e5e7eb;color:#111827;text-decoration:none">
+        Annuler
+      </a>
+    </div>
+  </form>
+</div>
+
+<style>
+  #content input[type="text"],
+  #content input[type="email"],
+  #content textarea {
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+
+  #content input[type="checkbox"] {
+    transform: scale(1.15);
+  }
+</style>
+{% endblock %}

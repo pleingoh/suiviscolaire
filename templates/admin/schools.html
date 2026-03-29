@@ -1,0 +1,68 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width:1100px;margin:20px auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <h1 style="margin:0 0 6px">Gestion des ecoles</h1>
+      <p style="margin:0;color:#4b5563">Le super admin peut modifier et supprimer les etablissements depuis cette page.</p>
+    </div>
+    <a href="{% url 'admin-dashboard' %}" style="background:#2563eb;color:white;padding:10px 16px;border-radius:6px;text-decoration:none">
+      Retour au tableau de bord
+    </a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+    <div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0">
+      {{ message }}
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <div style="background:white;border-radius:12px;box-shadow:0 4px 16px rgba(15,23,42,.08);overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <thead style="background:#f8fafc">
+        <tr>
+          <th style="padding:14px;text-align:left">Nom</th>
+          <th style="padding:14px;text-align:left">Code</th>
+          <th style="padding:14px;text-align:left">Contact</th>
+          <th style="padding:14px;text-align:left">Statut</th>
+          <th style="padding:14px;text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for school in schools %}
+        <tr style="border-top:1px solid #e5e7eb">
+          <td style="padding:14px">{{ school.name }}</td>
+          <td style="padding:14px">{{ school.code }}</td>
+          <td style="padding:14px">
+            <div>{{ school.phone|default:"-" }}</div>
+            <div style="color:#6b7280">{{ school.email|default:"-" }}</div>
+          </td>
+          <td style="padding:14px">
+            {% if school.is_active %}
+            <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534">Actif</span>
+            {% else %}
+            <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#fee2e2;color:#991b1b">Inactif</span>
+            {% endif %}
+          </td>
+          <td style="padding:14px;text-align:right">
+            <a href="{% url 'admin-school-edit' school.pk %}" style="display:inline-block;margin-right:8px;padding:8px 12px;border-radius:6px;background:#0f766e;color:white;text-decoration:none">
+              Modifier
+            </a>
+            <a href="{% url 'admin-school-delete' school.pk %}" style="display:inline-block;padding:8px 12px;border-radius:6px;background:#b91c1c;color:white;text-decoration:none">
+              Supprimer
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" style="padding:24px;text-align:center;color:#6b7280">Aucune ecole disponible.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
