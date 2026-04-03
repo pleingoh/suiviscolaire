@@ -5,20 +5,23 @@ from django.utils.html import format_html
 
 from academics.models import Grade
 from academics.pdf import build_bulletin_pdf
+from core.admin_mixins import SchoolScopedAdminMixin
 from core.models import Term
 
 from .models import Enrollment, Student
 
 
 @admin.register(Enrollment)
-class EnrollmentAdmin(admin.ModelAdmin):
+class EnrollmentAdmin(SchoolScopedAdminMixin):
+    school_lookup = "student__school"
     list_display = ("id", "student", "classroom", "school_year", "status")
     list_filter = ("school_year", "status")
     search_fields = ("student__first_name", "student__last_name")
 
 
 @admin.register(Student)
-class StudentAdmin(admin.ModelAdmin):
+class StudentAdmin(SchoolScopedAdminMixin):
+    school_lookup = "school"
     list_display = ("id", "first_name", "last_name", "bulletin_button")
     search_fields = ("first_name", "last_name", "matricule")
 

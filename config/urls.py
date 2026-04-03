@@ -18,9 +18,12 @@ Including another URLconf
 from django.conf.urls.i18n import i18n_patterns
 from django.conf.urls.i18n import set_language
 from django.contrib import admin
-from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.urls import include, path
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.conf import settings
+from django.conf.urls.static import static
 
 from core.admin_dashboard import (
     admin_dashboard,
@@ -33,8 +36,14 @@ from core.dashboard_pdf import export_dashboard_pdf
 
 admin_site = SchoolAdminSite(name="school_admin")
 
-urlpatterns = i18n_patterns(
+urlpatterns = [
+    path("", lambda request: redirect(f"/{settings.LANGUAGE_CODE}/admin/login/")),
+]
+
+urlpatterns += i18n_patterns(
     path("i18n/", include("django.conf.urls.i18n")),
+    path("admin/", RedirectView.as_view(pattern_name="admin-dashboard", permanent=False)),
+    path("admin/home/", admin.site.admin_view(admin.site.index), name="admin-home"),
     path("admin/dashboard/", admin_dashboard, name="admin-dashboard"),
     path("admin/dashboard/pdf/", export_dashboard_pdf, name="dashboard_pdf"),
     path("admin/schools/", admin_school_list, name="admin-school-list"),
@@ -52,5 +61,7 @@ urlpatterns = i18n_patterns(
     path("api/cashier/", include("cashier.urls")),
     path("api/fees/", include("fees.urls")),
     path("set-language/", set_language, name="set_language"),
-    path("", lambda request: HttpResponse("API Suivi Scolaire OK")),
+    path("", lambda request: redirect("admin:login")),
 )
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,9 +1,14 @@
+import random
+import string
+
 from django.db import models
+from django.utils.text import slugify
 
 
 class School(models.Model):
     name = models.CharField(max_length=150)
-    code = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=50, unique=True, blank=True, editable=False)
+    logo = models.ImageField(upload_to="schools/logos/", blank=True, null=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     phone = models.CharField(max_length=30, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
@@ -12,6 +17,19 @@ class School(models.Model):
     class Meta:
         verbose_name = "Ecole"
         verbose_name_plural = "Ecoles"
+
+    def _generate_code(self):
+        base = slugify(self.name).upper().replace("-", "")[:6] or "ECOLE"
+        while True:
+            suffix = "".join(random.choices(string.digits, k=4))
+            code = f"{base}-{suffix}"
+            if not School.objects.filter(code=code).exclude(pk=self.pk).exists():
+                return code
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

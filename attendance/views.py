@@ -1,31 +1,41 @@
 from datetime import date as dt_date, time as dt_time
 
 from django.utils import timezone
-from rest_framework import viewsets, status
+from django.utils.translation import gettext as _
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.utils.translation import gettext as _
-from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
+
+from core.access import ensure_same_school, ensure_user_school, is_global_admin
+from core.models import SchoolSetting
+from students.models import Enrollment, Student
 
 from .models import Attendance
 from .serializers import AttendanceSerializer
-from core.models import SchoolSetting
-from students.models import Student, Enrollment
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all()
     serializer_class = AttendanceSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Attendance.objects.all()
 
-    # -------------------------
-    # Helpers
-    # -------------------------
+    def get_queryset(self):
+        queryset = Attendance.objects.all()
+        if is_global_admin(self.request.user):
+            return queryset
+        school = ensure_user_school(self.request.user)
+        return queryset.filter(student__school=school).distinct()
+
+    def _get_student(self, student_id):
+        student = Student.objects.select_related("school").get(id=student_id)
+        ensure_same_school(self.request.user, student.school)
+        return student
 
     def _late_cutoff_time(self, student_id: int):
-        student = Student.objects.select_related("school").get(id=student_id)
+        student = self._get_student(student_id)
         setting = SchoolSetting.objects.filter(school=student.school).first()
         return setting.late_after_time if setting and setting.late_after_time else dt_time(7, 30)
 
@@ -34,80 +44,61 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             return "LATE"
         return "PRESENT"
 
-    # -------------------------
-    # Arrivée / Sortie
-    # -------------------------
-
     @action(detail=False, methods=["post"], url_path="checkin")
     def checkin(self, request):
         student_id = request.data.get("student")
         school_year_id = request.data.get("school_year")
-
         if not student_id or not school_year_id:
             return Response({"detail": _("student et school_year sont obligatoires")}, status=400)
 
-        d = request.data.get("date") or dt_date.today().isoformat()
+        student = self._get_student(int(student_id))
+        ensure_same_school(request.user, student.school)
+
+        date_value = request.data.get("date") or dt_date.today().isoformat()
         method = request.data.get("method") or "MANUAL"
+        arrival_time = request.data.get("arrival_time") or timezone.localtime().time().replace(microsecond=0)
 
-        t = request.data.get("arrival_time")
-        if t is None:
-            t = timezone.localtime().time().replace(microsecond=0)
-
-        obj, created = Attendance.objects.get_or_create(
+        attendance, created = Attendance.objects.get_or_create(
             student_id=student_id,
             school_year_id=school_year_id,
-            date=d,
-            defaults={
-                "arrival_time": t,
-                "arrival_method": method,
-                "status": "PRESENT",
-            },
+            date=date_value,
+            defaults={"arrival_time": arrival_time, "arrival_method": method, "status": "PRESENT"},
         )
 
-        if obj.arrival_time is None:
-            obj.arrival_time = t
-            obj.arrival_method = method
+        if attendance.arrival_time is None:
+            attendance.arrival_time = arrival_time
+            attendance.arrival_method = method
 
-        cutoff = self._late_cutoff_time(int(student_id))
-        obj.status = self._compute_status(obj.arrival_time, cutoff)
-        obj.save()
+        attendance.status = self._compute_status(attendance.arrival_time, self._late_cutoff_time(int(student_id)))
+        attendance.save()
 
         return Response(
-            AttendanceSerializer(obj).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            AttendanceSerializer(attendance).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
     @action(detail=False, methods=["post"], url_path="checkout")
     def checkout(self, request):
         student_id = request.data.get("student")
         school_year_id = request.data.get("school_year")
-
         if not student_id or not school_year_id:
             return Response({"detail": _("student et school_year sont obligatoires")}, status=400)
 
-        d = request.data.get("date") or dt_date.today().isoformat()
+        self._get_student(int(student_id))
+        date_value = request.data.get("date") or dt_date.today().isoformat()
         method = request.data.get("method") or "MANUAL"
+        departure_time = request.data.get("departure_time") or timezone.localtime().time().replace(microsecond=0)
 
-        t = request.data.get("departure_time")
-        if t is None:
-            t = timezone.localtime().time().replace(microsecond=0)
-
-        obj, _ = Attendance.objects.get_or_create(
+        attendance, _ = Attendance.objects.get_or_create(
             student_id=student_id,
             school_year_id=school_year_id,
-            date=d,
+            date=date_value,
             defaults={"status": "PRESENT"},
         )
-
-        obj.departure_time = t
-        obj.departure_method = method
-        obj.save()
-
-        return Response(AttendanceSerializer(obj).data, status=200)
-
-    # -------------------------
-    # Présence par classe (uniquement les pointages existants)
-    # -------------------------
+        attendance.departure_time = departure_time
+        attendance.departure_method = method
+        attendance.save()
+        return Response(AttendanceSerializer(attendance).data, status=200)
 
     @extend_schema(
         parameters=[
@@ -120,22 +111,17 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def by_class(self, request):
         classroom_id = request.query_params.get("classroom_id")
         school_year_id = request.query_params.get("school_year_id")
-        d = request.query_params.get("date") or dt_date.today().isoformat()
+        date_value = request.query_params.get("date") or dt_date.today().isoformat()
 
         if not classroom_id or not school_year_id:
             return Response({"detail": _("classroom_id et school_year_id sont obligatoires")}, status=400)
 
-        qs = Attendance.objects.filter(
+        queryset = self.get_queryset().filter(
             student__enrollments__classroom_id=classroom_id,
             school_year_id=school_year_id,
-            date=d,
+            date=date_value,
         ).select_related("student")
-
-        return Response(AttendanceSerializer(qs, many=True).data, status=200)
-
-    # -------------------------
-    # Présence du jour (liste complète classe + ABSENT + compteurs)
-    # -------------------------
+        return Response(AttendanceSerializer(queryset, many=True).data, status=200)
 
     @extend_schema(
         parameters=[
@@ -148,7 +134,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def class_today(self, request):
         classroom_id = request.query_params.get("classroom_id")
         school_year_id = request.query_params.get("school_year_id")
-        d = request.query_params.get("date") or dt_date.today().isoformat()
+        date_value = request.query_params.get("date") or dt_date.today().isoformat()
 
         if not classroom_id or not school_year_id:
             return Response({"detail": _("classroom_id et school_year_id sont obligatoires")}, status=400)
@@ -159,27 +145,27 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             status="ENROLLED",
         ).select_related("student")
 
-        student_ids = [e.student_id for e in enrollments]
+        if not is_global_admin(request.user):
+            school = ensure_user_school(request.user)
+            enrollments = enrollments.filter(student__school=school)
 
-        att_map = {
-            a.student_id: a
-            for a in Attendance.objects.filter(
+        student_ids = [enrollment.student_id for enrollment in enrollments]
+        attendance_map = {
+            attendance.student_id: attendance
+            for attendance in self.get_queryset().filter(
                 school_year_id=school_year_id,
-                date=d,
+                date=date_value,
                 student_id__in=student_ids,
             )
         }
 
-        present_count = 0
-        late_count = 0
-        absent_count = 0
-
+        present_count = late_count = absent_count = 0
         results = []
-        for e in enrollments:
-            s = e.student
-            a = att_map.get(s.id)
 
-            status_value = a.status if a else "ABSENT"
+        for enrollment in enrollments:
+            student = enrollment.student
+            attendance = attendance_map.get(student.id)
+            status_value = attendance.status if attendance else "ABSENT"
 
             if status_value == "PRESENT":
                 present_count += 1
@@ -188,24 +174,29 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             else:
                 absent_count += 1
 
-            results.append({
-                "student_id": s.id,
-                "student_name": f"{s.first_name} {s.last_name}",
-                "date": d,
-                "arrival_time": a.arrival_time if a else None,
-                "departure_time": a.departure_time if a else None,
-                "status": status_value,
-            })
+            results.append(
+                {
+                    "student_id": student.id,
+                    "student_name": f"{student.first_name} {student.last_name}",
+                    "date": date_value,
+                    "arrival_time": attendance.arrival_time if attendance else None,
+                    "departure_time": attendance.departure_time if attendance else None,
+                    "status": status_value,
+                }
+            )
 
-        return Response({
-            "classroom_id": int(classroom_id),
-            "school_year_id": int(school_year_id),
-            "date": d,
-            "counts": {
-                "total": len(results),
-                "present": present_count,
-                "late": late_count,
-                "absent": absent_count,
+        return Response(
+            {
+                "classroom_id": int(classroom_id),
+                "school_year_id": int(school_year_id),
+                "date": date_value,
+                "counts": {
+                    "total": len(results),
+                    "present": present_count,
+                    "late": late_count,
+                    "absent": absent_count,
+                },
+                "results": results,
             },
-            "results": results,
-        }, status=200)
+            status=200,
+        )

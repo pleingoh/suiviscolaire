@@ -1,5 +1,7 @@
 from django.contrib.admin import AdminSite
+from django.contrib import admin
 from django.shortcuts import redirect
+from accounts.forms import EmailOrPhoneAdminAuthenticationForm
 
 
 class SchoolAdminSite(AdminSite):
@@ -9,3 +11,6 @@ class SchoolAdminSite(AdminSite):
 
     def index(self, request, extra_context=None):
         return redirect("/admin/dashboard/")
+
+
+admin.site.login_form = EmailOrPhoneAdminAuthenticationForm

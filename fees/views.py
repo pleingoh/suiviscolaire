@@ -2,71 +2,69 @@ from datetime import date as dt_date
 from decimal import Decimal
 
 from django.db.models import Sum
-from django.utils import timezone
-
-from rest_framework import viewsets, status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
+from core.access import ensure_same_school, ensure_user_school, is_global_admin
+from students.models import Enrollment
 
-from .models import FeePlan, StudentFeeAccount, FeeInstallment
-from .serializers import (
-    FeePlanSerializer,
-    StudentFeeAccountSerializer,
-    FeeInstallmentSerializer,
-)
+from .models import FeeInstallment, FeePlan, StudentFeeAccount
+from .serializers import FeeInstallmentSerializer, FeePlanSerializer, StudentFeeAccountSerializer
+from .services import create_installments
 
 
-# ---------------------------
-# 1) FeePlan
-# ---------------------------
-class FeePlanViewSet(viewsets.ModelViewSet):
+class SchoolScopedViewSetMixin:
+    school_lookup = None
+
+    def get_queryset(self):
+        queryset = self.queryset.all()
+        if is_global_admin(self.request.user):
+            return queryset
+        return queryset.filter(**{self.school_lookup: ensure_user_school(self.request.user)}).distinct()
+
+
+class FeePlanViewSet(SchoolScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = FeePlan.objects.all()
     serializer_class = FeePlanSerializer
     permission_classes = [IsAuthenticated]
+    school_lookup = "school"
+
+    def perform_create(self, serializer):
+        ensure_same_school(self.request.user, serializer.validated_data["school"])
+        ensure_same_school(self.request.user, serializer.validated_data["school_year"].school)
+        serializer.save()
 
 
-# ---------------------------
-# 2) StudentFeeAccount
-# ---------------------------
-class StudentFeeAccountViewSet(viewsets.ModelViewSet):
+class StudentFeeAccountViewSet(SchoolScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = StudentFeeAccount.objects.all()
     serializer_class = StudentFeeAccountSerializer
     permission_classes = [IsAuthenticated]
+    school_lookup = "student__school"
+
+    def perform_create(self, serializer):
+        ensure_same_school(self.request.user, serializer.validated_data["student"].school)
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="generate-installments")
     def generate_installments(self, request, pk=None):
-        """
-        Génère les échéances mensuelles pour un compte (installments).
-        """
         account = self.get_object()
-
-        # éviter doublons
         FeeInstallment.objects.filter(account=account).delete()
-
         create_installments(account)
-        return Response({"detail": "Echéances générées avec succès"}, status=200)
+        return Response({"detail": "Echeances generees avec succes"}, status=200)
 
     @action(detail=True, methods=["get"], url_path="summary")
     def summary(self, request, pk=None):
-        """
-        Résumé scolarité d’un élève :
-        total dû, total payé, reste, échéances payées / impayées.
-        """
         account = self.get_object()
-
-        qs = FeeInstallment.objects.filter(account=account).order_by("due_month")
-
-        total_due = qs.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
-        total_paid = qs.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
+        queryset = FeeInstallment.objects.filter(account=account).order_by("due_month")
+        total_due = queryset.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
+        total_paid = queryset.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
         remaining = total_due - total_paid
-
-        paid_count = qs.filter(is_paid=True).count()
-        unpaid_count = qs.filter(is_paid=False).count()
-
+        paid_count = queryset.filter(is_paid=True).count()
+        unpaid_count = queryset.filter(is_paid=False).count()
         return Response(
             {
                 "account_id": account.id,
@@ -78,24 +76,19 @@ class StudentFeeAccountViewSet(viewsets.ModelViewSet):
                 "remaining": str(remaining),
                 "paid_installments": paid_count,
                 "unpaid_installments": unpaid_count,
-                "installments": FeeInstallmentSerializer(qs, many=True).data,
+                "installments": FeeInstallmentSerializer(queryset, many=True).data,
             },
             status=200,
         )
 
 
-# ---------------------------
-# 3) FeeInstallment
-# ---------------------------
-class FeeInstallmentViewSet(viewsets.ModelViewSet):
+class FeeInstallmentViewSet(SchoolScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = FeeInstallment.objects.all()
     serializer_class = FeeInstallmentSerializer
     permission_classes = [IsAuthenticated]
+    school_lookup = "account__student__school"
 
 
-# ---------------------------
-# 4) REPORTS
-# ---------------------------
 class FeeReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -108,15 +101,9 @@ class FeeReportViewSet(viewsets.ViewSet):
     )
     @action(detail=False, methods=["get"], url_path="class-status")
     def class_status(self, request):
-        """
-        Liste élèves d’une classe + statut scolarité.
-        """
-        from students.models import Enrollment
-
         classroom_id = request.query_params.get("classroom_id")
         school_year_id = request.query_params.get("school_year_id")
         as_of = request.query_params.get("as_of") or dt_date.today().isoformat()
-
         if not classroom_id or not school_year_id:
             return Response({"detail": "classroom_id et school_year_id sont obligatoires"}, status=400)
 
@@ -125,124 +112,111 @@ class FeeReportViewSet(viewsets.ViewSet):
             school_year_id=school_year_id,
             status="ENROLLED",
         ).select_related("student")
+        if not is_global_admin(request.user):
+            enrollments = enrollments.filter(student__school=ensure_user_school(request.user))
 
-        student_ids = [e.student_id for e in enrollments]
-
-        plan = FeePlan.objects.filter(
-            school_year_id=school_year_id,
-            is_active=True
-        ).first()
-
+        student_ids = [enrollment.student_id for enrollment in enrollments]
+        plan = FeePlan.objects.filter(school_year_id=school_year_id, is_active=True).first()
         if not plan:
-            return Response({"detail": "Aucun plan scolarité actif trouvé"}, status=400)
+            return Response({"detail": "Aucun plan scolarite actif trouve"}, status=400)
 
         accounts = {
-            a.student_id: a
-            for a in StudentFeeAccount.objects.filter(
+            account.student_id: account
+            for account in StudentFeeAccount.objects.filter(
                 school_year_id=school_year_id,
                 student_id__in=student_ids,
             ).select_related("plan")
         }
 
-        results = []
-
         cutoff = as_of[:7] + "-01"
-
-        for e in enrollments:
-            s = e.student
-            acc = accounts.get(s.id)
-
-            # Pas encore de compte → considéré en retard
-            if not acc:
-                results.append({
-                    "student_id": s.id,
-                    "student_name": f"{s.first_name} {s.last_name}",
-                    "total_due": str(plan.total_amount),
-                    "total_paid": "0.00",
-                    "remaining": str(plan.total_amount),
-                    "late_installments": plan.installments,
-                    "status": "LATE",
-                })
+        results = []
+        for enrollment in enrollments:
+            student = enrollment.student
+            account = accounts.get(student.id)
+            if not account:
+                results.append(
+                    {
+                        "student_id": student.id,
+                        "student_name": f"{student.first_name} {student.last_name}",
+                        "total_due": str(plan.total_amount),
+                        "total_paid": "0.00",
+                        "remaining": str(plan.total_amount),
+                        "late_installments": plan.installments,
+                        "status": "LATE",
+                    }
+                )
                 continue
 
-            qs = FeeInstallment.objects.filter(account=acc)
-
-            total_due = qs.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
-            total_paid = qs.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
+            queryset = FeeInstallment.objects.filter(account=account)
+            total_due = queryset.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
+            total_paid = queryset.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
             remaining = total_due - total_paid
+            late_installments = queryset.filter(due_month__lte=cutoff, is_paid=False).count()
+            results.append(
+                {
+                    "student_id": student.id,
+                    "student_name": f"{student.first_name} {student.last_name}",
+                    "total_due": str(total_due),
+                    "total_paid": str(total_paid),
+                    "remaining": str(remaining),
+                    "late_installments": late_installments,
+                    "status": "OK" if late_installments == 0 else "LATE",
+                }
+            )
 
-            late_installments = qs.filter(due_month__lte=cutoff, is_paid=False).count()
+        return Response({"classroom_id": int(classroom_id), "school_year_id": int(school_year_id), "as_of": as_of, "results": results}, status=200)
 
-            results.append({
-                "student_id": s.id,
-                "student_name": f"{s.first_name} {s.last_name}",
-                "total_due": str(total_due),
-                "total_paid": str(total_paid),
-                "remaining": str(remaining),
-                "late_installments": late_installments,
-                "status": "OK" if late_installments == 0 else "LATE",
-            })
-
-        return Response(
-            {
-                "classroom_id": int(classroom_id),
-                "school_year_id": int(school_year_id),
-                "as_of": as_of,
-                "results": results,
-            },
-            status=200,
-        )
-    
     @extend_schema(
-    parameters=[
-        OpenApiParameter(name="student_id", type=OpenApiTypes.INT, required=True),
-        OpenApiParameter(name="school_year_id", type=OpenApiTypes.INT, required=True),
-    ]
-)
+        parameters=[
+            OpenApiParameter(name="student_id", type=OpenApiTypes.INT, required=True),
+            OpenApiParameter(name="school_year_id", type=OpenApiTypes.INT, required=True),
+        ]
+    )
     @action(detail=False, methods=["get"], url_path="student-summary")
     def student_summary(self, request):
         student_id = request.query_params.get("student_id")
         school_year_id = request.query_params.get("school_year_id")
-
         if not student_id or not school_year_id:
             return Response({"detail": "student_id et school_year_id sont obligatoires"}, status=400)
 
         plan = FeePlan.objects.filter(school_year_id=school_year_id, is_active=True).first()
         if not plan:
-            return Response({"detail": "Aucun plan scolarité actif trouvé"}, status=400)
+            return Response({"detail": "Aucun plan scolarite actif trouve"}, status=400)
 
-        account = StudentFeeAccount.objects.filter(
-            student_id=student_id,
-            school_year_id=school_year_id
-        ).select_related("plan").first()
+        account = StudentFeeAccount.objects.filter(student_id=student_id, school_year_id=school_year_id).select_related("plan").first()
+        if account and not is_global_admin(request.user):
+            ensure_same_school(request.user, account.student.school)
 
         if not account:
-            # pas de compte => rien payé
-            return Response({
+            return Response(
+                {
+                    "student_id": int(student_id),
+                    "school_year_id": int(school_year_id),
+                    "plan_total": str(plan.total_amount),
+                    "total_due": str(plan.total_amount),
+                    "total_paid": "0.00",
+                    "remaining": str(plan.total_amount),
+                    "credit_balance": "0.00",
+                    "status": "LATE",
+                },
+                status=200,
+            )
+
+        queryset = FeeInstallment.objects.filter(account=account)
+        total_due = queryset.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
+        total_paid = queryset.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
+        remaining = total_due - total_paid
+        return Response(
+            {
                 "student_id": int(student_id),
                 "school_year_id": int(school_year_id),
-                "plan_total": str(plan.total_amount),
-                "total_due": str(plan.total_amount),
-                "total_paid": "0.00",
-                "remaining": str(plan.total_amount),
-                "credit_balance": "0.00",
-                "status": "LATE",
-            }, status=200)
-
-        qs = FeeInstallment.objects.filter(account=account)
-        total_due = qs.aggregate(x=Sum("amount_due"))["x"] or Decimal("0.00")
-        total_paid = qs.aggregate(x=Sum("amount_paid"))["x"] or Decimal("0.00")
-        remaining = total_due - total_paid
-
-        return Response({
-            "student_id": int(student_id),
-            "school_year_id": int(school_year_id),
-            "account_id": account.id,
-            "plan_total": str(account.plan.total_amount),
-            "total_due": str(total_due),
-            "total_paid": str(total_paid),
-            "remaining": str(remaining),
-            "credit_balance": str(account.credit_balance),
-            "status": "OK" if remaining <= 0 else "LATE",
-        }, status=200)
-
+                "account_id": account.id,
+                "plan_total": str(account.plan.total_amount),
+                "total_due": str(total_due),
+                "total_paid": str(total_paid),
+                "remaining": str(remaining),
+                "credit_balance": str(account.credit_balance),
+                "status": "OK" if remaining <= 0 else "LATE",
+            },
+            status=200,
+        )

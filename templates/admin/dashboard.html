@@ -1,91 +1,222 @@
 {% extends "admin/base_site.html" %}
-{% load i18n %}
+{% load static %}
 
 {% block content %}
-<div style="position:absolute;right:30px;top:20px">
-  <form action="/set-language/" method="post">
-    {% csrf_token %}
-    <input name="next" type="hidden" value="{{ request.path }}">
-    <button type="submit" name="language" value="fr" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;margin-right:5px">
-      Francais
-    </button>
-    <button type="submit" name="language" value="en" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd">
-      English
-    </button>
-  </form>
-</div>
-
 <style>
-body {
-  background: #f1f5f9;
-  font-family: Arial, Helvetica, sans-serif;
-}
+  :root {
+    --dash-bg: #f5fbff;
+    --dash-card: #ffffff;
+    --dash-line: #d6eafb;
+    --dash-primary: #2786d8;
+    --dash-primary-deep: #1d3f84;
+    --dash-primary-soft: #e8f5ff;
+    --dash-green: #69d338;
+    --dash-green-soft: #f1fbdf;
+    --dash-text: #173a66;
+    --dash-muted: #5d7d98;
+  }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 40px;
-}
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(39, 134, 216, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(105, 211, 56, 0.14), transparent 24%),
+      linear-gradient(180deg, #f8fdff 0%, var(--dash-bg) 100%);
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  }
 
-.card,
-.chart-box,
-.table-container {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-}
+  .hero {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 24px;
+    margin-bottom: 28px;
+    padding: 28px;
+    border: 1px solid rgba(39, 134, 216, 0.12);
+    border-radius: 24px;
+    background: linear-gradient(135deg, #ffffff 0%, #eef7ff 58%, #f4fcde 100%);
+    box-shadow: 0 16px 40px rgba(29, 63, 132, 0.08);
+  }
 
-.charts,
-.tables-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
-}
+  .hero img {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    border-radius: 24px;
+    background: #ffffff;
+    padding: 12px;
+    box-shadow: 0 18px 34px rgba(29, 63, 132, 0.12);
+  }
 
-.table-container {
-  margin-top: 30px;
-}
+  .hero h1 {
+    margin: 0 0 10px 0;
+    color: var(--dash-text);
+    font-size: 34px;
+    line-height: 1.05;
+  }
 
-.table-title {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 15px;
-}
+  .hero p {
+    margin: 0;
+    max-width: 760px;
+    color: var(--dash-muted);
+    font-size: 15px;
+    line-height: 1.7;
+  }
 
-.dashboard-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 26px;
+  }
 
-.dashboard-table thead {
-  background: #f3f4f6;
-}
+  .toolbar a {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 20px;
+    border-radius: 999px;
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+    box-shadow: 0 14px 28px rgba(29, 63, 132, 0.18);
+  }
 
-.dashboard-table th,
-.dashboard-table td {
-  text-align: left;
-  padding: 12px;
-}
+  .toolbar a.primary {
+    background: linear-gradient(135deg, var(--dash-primary) 0%, var(--dash-primary-deep) 100%);
+  }
 
-.dashboard-table td {
-  border-top: 1px solid #e5e7eb;
-}
+  .toolbar a.secondary {
+    background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+  }
 
-.status-present {
-  color: green;
-  font-weight: bold;
-}
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 20px;
+    margin-bottom: 34px;
+  }
 
-.status-absent {
-  color: red;
-  font-weight: bold;
-}
+  .card,
+  .chart-box,
+  .table-container {
+    background: var(--dash-card);
+    padding: 22px;
+    border-radius: 22px;
+    border: 1px solid rgba(39, 134, 216, 0.1);
+    box-shadow: 0 10px 26px rgba(17, 62, 92, 0.05);
+  }
+
+  .card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::after {
+    content: "";
+    position: absolute;
+    top: -18px;
+    right: -18px;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(39, 134, 216, 0.2), rgba(105, 211, 56, 0.02));
+  }
+
+  .card h3 {
+    margin: 0;
+    color: var(--dash-muted);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .card h2 {
+    margin: 14px 0 0 0;
+    color: var(--dash-text);
+    font-size: 34px;
+  }
+
+  .charts,
+  .tables-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+
+  .table-container {
+    margin-top: 28px;
+  }
+
+  .chart-box h3,
+  .table-title {
+    margin: 0 0 16px 0;
+    color: var(--dash-text);
+    font-size: 19px;
+    font-weight: 800;
+  }
+
+  .dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .dashboard-table thead {
+    background: linear-gradient(90deg, var(--dash-primary-soft) 0%, var(--dash-green-soft) 100%);
+  }
+
+  .dashboard-table th,
+  .dashboard-table td {
+    text-align: left;
+    padding: 14px 12px;
+  }
+
+  .dashboard-table th {
+    color: #2a617f;
+    font-weight: 800;
+  }
+
+  .dashboard-table td {
+    color: #36576d;
+    border-top: 1px solid var(--dash-line);
+  }
+
+  .dashboard-table tbody tr:hover {
+    background: #f8fdff;
+  }
+
+  @media (max-width: 960px) {
+    .hero,
+    .charts,
+    .tables-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .hero {
+      text-align: center;
+    }
+
+    .hero img {
+      margin: 0 auto;
+    }
+  }
 </style>
 
-<h1 style="margin-bottom:20px">Tableau de bord de l'ecole</h1>
+<div class="hero">
+  <img src="{% static 'img/logo_ss.png' %}" alt="Logo Suivi scolaire">
+  <div>
+    <h1>Tableau de bord de l'ecole</h1>
+    <p>Une vue claire et apaisee pour suivre les eleves, les classes, la presence, la cantine et les paiements au quotidien.</p>
+  </div>
+</div>
+
+<div class="toolbar">
+  <a class="primary" href="/admin/dashboard/pdf/?students={{ students }}&classes={{ classes }}&attendance={{ attendance_today }}&canteen={{ canteen_today }}&payments={{ payments_today }}">
+    Exporter le rapport PDF
+  </a>
+  <a class="secondary" href="{% url 'admin-school-list' %}">
+    Gerer les ecoles
+  </a>
+</div>
 
 <div class="cards">
   <div class="card">
@@ -116,14 +247,7 @@ body {
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<a href="/admin/dashboard/pdf/?students={{ students }}&classes={{ classes }}&attendance={{ attendance_today }}&canteen={{ canteen_today }}&payments={{ payments_today }}" style="background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none">
-  Exporter le rapport PDF
-</a>
-<a href="{% url 'admin-school-list' %}" style="background:#0f766e;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;margin-left:10px">
-  Gerer les ecoles
-</a>
-
-<div class="charts" style="margin-top:30px">
+<div class="charts">
   <div class="chart-box">
     <h3>Eleves par classe</h3>
     <canvas id="classChart"></canvas>
@@ -219,9 +343,11 @@ new Chart(document.getElementById("classChart"), {
     datasets: [{
       label: "Nombre d'eleves",
       data: classesData.map((item) => item.total),
-      backgroundColor: "#3b82f6"
+      backgroundColor: "#2786d8",
+      borderRadius: 10
     }]
-  }
+  },
+  options: { plugins: { legend: { display: false } } }
 });
 
 const paymentsData = JSON.parse(document.getElementById("payments-data").textContent);
@@ -232,8 +358,9 @@ new Chart(document.getElementById("paymentsChart"), {
     datasets: [{
       label: "Paiements",
       data: paymentsData.map((item) => item.total),
-      borderColor: "#16a34a",
-      backgroundColor: "#16a34a33",
+      borderColor: "#1d3f84",
+      backgroundColor: "#93cdf466",
+      tension: 0.35,
       fill: true
     }]
   }
@@ -247,8 +374,9 @@ new Chart(document.getElementById("attendanceChart"), {
     datasets: [{
       label: "Presences",
       data: attendanceData.map((item) => item.total),
-      borderColor: "#f59e0b",
-      backgroundColor: "#f59e0b33",
+      borderColor: "#57aee4",
+      backgroundColor: "#d9eeff66",
+      tension: 0.35,
       fill: true
     }]
   }
@@ -262,9 +390,11 @@ new Chart(document.getElementById("canteenChart"), {
     datasets: [{
       label: "Repas servis",
       data: canteenData.map((item) => item.total),
-      backgroundColor: "#ef4444"
+      backgroundColor: "#69d338",
+      borderRadius: 10
     }]
-  }
+  },
+  options: { plugins: { legend: { display: false } } }
 });
 </script>
 {% endblock %}

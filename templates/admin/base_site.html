@@ -1,11 +1,199 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="icon" type="image/png" href="{% static 'img/logo_ss.png' %}">
+<style>
+  :root {
+    --ss-blue-deep: #1d3f84;
+    --ss-blue-main: #2786d8;
+    --ss-blue-light: #dff2ff;
+    --ss-green: #69d338;
+    --ss-green-soft: #eefbdf;
+    --ss-ink: #123660;
+    --ss-white: #ffffff;
+  }
+
+  #header {
+    background: linear-gradient(135deg, var(--ss-blue-light) 0%, #bfe5ff 55%, var(--ss-green-soft) 100%);
+    color: var(--ss-ink);
+    box-shadow: 0 12px 30px rgba(39, 134, 216, 0.18);
+  }
+
+  #header a:link,
+  #header a:visited {
+    color: var(--ss-ink);
+  }
+
+  #site-name a,
+  #site-name a:link,
+  #site-name a:visited {
+    color: var(--ss-green) !important;
+  }
+
+  #user-tools {
+    color: var(--ss-ink);
+  }
+
+  #user-tools a {
+    border-bottom: none;
+    font-weight: 600;
+  }
+
+  .module caption,
+  .inline-group h2 {
+    background: linear-gradient(90deg, #e7f5ff 0%, #f3fce9 100%);
+    color: var(--ss-ink);
+  }
+
+  #content,
+  #content-main,
+  .module,
+  .module h2,
+  .module caption,
+  .inline-group h2,
+  .form-row,
+  .results,
+  .results th,
+  .results td,
+  .paginator,
+  .help,
+  p.help,
+  .aligned label,
+  .selector h2,
+  .selector-chosen h2,
+  .submit-row,
+  .dashboard .module table th,
+  .dashboard .module table td,
+  #changelist table thead th,
+  #changelist table tbody td,
+  #nav-sidebar,
+  #nav-sidebar a,
+  #nav-sidebar .current-model,
+  .app-list .app-title,
+  .app-list .model-name {
+    color: var(--ss-ink) !important;
+  }
+
+  .module,
+  .inline-group,
+  #content-related,
+  #changelist-filter,
+  #nav-sidebar {
+    background: #ffffff;
+    border-color: #d7eaf7;
+  }
+
+  #nav-sidebar .current-app .section:link,
+  #nav-sidebar .current-app .section:visited,
+  #nav-sidebar .current-model {
+    background: #eef8ff;
+    color: var(--ss-blue-deep) !important;
+  }
+
+  .dashboard .module,
+  .app-list .module {
+    background: linear-gradient(180deg, #ffffff 0%, #eef7ff 100%);
+    border: 1px solid #cfe4f4;
+    border-radius: 0;
+    box-shadow: 0 10px 24px rgba(29, 63, 132, 0.05);
+    overflow: hidden;
+  }
+
+  .dashboard .module caption,
+  .dashboard .module h2,
+  .app-list .module caption,
+  .app-list .module h2 {
+    background: linear-gradient(90deg, #dff2ff 0%, #edf8ff 68%, #f1fbdf 100%);
+    color: var(--ss-blue-deep) !important;
+    font-weight: 800;
+    padding: 14px 16px;
+    border-bottom: 1px solid #cfe4f4;
+  }
+
+  .dashboard .module table,
+  .app-list .module table {
+    background: transparent;
+  }
+
+  .dashboard .module a,
+  .dashboard .module a:link,
+  .dashboard .module a:visited,
+  .app-list .module a,
+  .app-list .module a:link,
+  .app-list .module a:visited,
+  .dashboard .module caption a,
+  .dashboard .module h2 a,
+  .app-list .module caption a,
+  .app-list .module h2 a {
+    color: var(--ss-blue-deep) !important;
+  }
+
+  .dashboard .module th,
+  .dashboard .module td,
+  .app-list .module th,
+  .app-list .module td {
+    color: var(--ss-ink) !important;
+  }
+
+  .dashboard .module tbody tr:nth-child(odd),
+  .app-list .module tbody tr:nth-child(odd) {
+    background: rgba(223, 242, 255, 0.34);
+  }
+
+  .dashboard .module tbody tr:nth-child(even),
+  .app-list .module tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .dashboard .module tbody tr:hover,
+  .app-list .module tbody tr:hover {
+    background: #e8f6ff;
+  }
+
+  a:link,
+  a:visited {
+    color: var(--ss-blue-deep);
+  }
+
+  div.breadcrumbs {
+    background: #d9f0ff;
+    color: #245784;
+  }
+
+  div.breadcrumbs a {
+    color: #245784;
+  }
+
+  .button,
+  input[type=submit],
+  input[type=button],
+  .submit-row input,
+  a.button {
+    background: linear-gradient(135deg, var(--ss-blue-main) 0%, var(--ss-blue-deep) 100%);
+  }
+</style>
+{% endblock %}
+
+{% block branding %}
+<div style="display:flex;align-items:center;gap:16px">
+  <img src="{% static 'img/logo_ss.png' %}" alt="Logo Suivi scolaire" style="height:58px;width:auto;border-radius:14px;background:rgba(255,255,255,.82);padding:5px;box-shadow:0 10px 24px rgba(29,63,132,.14)">
+  <div>
+    <h1 id="site-name" style="margin:0;font-size:24px;font-weight:800;letter-spacing:.01em">
+      <a href="/admin/" style="color:inherit;text-decoration:none">Suivi scolaire</a>
+    </h1>
+    <div style="font-size:12px;color:#2b63a0;font-weight:600">Gestion academique et pilotage d'etablissement</div>
+  </div>
+</div>
+{% endblock %}
 
 {% block nav-global %}
-<div style="padding:10px;background:#1f2937">
-  <a href="/admin/dashboard/" style="color:white;font-weight:bold;margin-right:20px;text-decoration:none">
+<div style="padding:12px 14px;background:rgba(255,255,255,.48);border-radius:14px;display:flex;align-items:center;gap:12px;backdrop-filter:blur(6px)">
+  <a href="/admin/dashboard/" style="color:#184a7f;font-weight:800;text-decoration:none;background:#ffffff;padding:10px 16px;border-radius:999px;box-shadow:0 8px 18px rgba(39,134,216,.18)">
     Tableau de bord
   </a>
-  <a href="/admin/" style="color:white;text-decoration:none">
+  <a href="/admin/home/" style="color:#2e6d37;font-weight:700;text-decoration:none;padding:10px 14px;border-radius:999px">
     Administration
   </a>
 </div>

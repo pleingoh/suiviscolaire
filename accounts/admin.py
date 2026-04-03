@@ -1,7 +1,9 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import AdminPasswordChangeForm, ReadOnlyPasswordHashField
-from django import forms
+
+from core.access import is_global_admin
 
 from .models import Role, User
 
@@ -52,6 +54,15 @@ class UserChangeForm(forms.ModelForm):
         return self.initial["password"]
 
 
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ("id", "code", "label")
+    search_fields = ("code", "label")
+
+    def has_module_permission(self, request):
+        return is_global_admin(request.user)
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     form = UserChangeForm
@@ -80,8 +91,22 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
 
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if is_global_admin(request.user):
+            return queryset
+        if request.user.school_id:
+            return queryset.filter(school=request.user.school, is_superuser=False)
+        return queryset.none()
 
-@admin.register(Role)
-class RoleAdmin(admin.ModelAdmin):
-    list_display = ("code", "label")
-    search_fields = ("code", "label")
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "school" and not is_global_admin(request.user):
+            kwargs["queryset"] = db_field.remote_field.model.objects.filter(id=request.user.school_id)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not is_global_admin(request.user):
+            obj.school = request.user.school
+            obj.is_superuser = False
+            obj.is_staff = True
+        super().save_model(request, obj, form, change)
